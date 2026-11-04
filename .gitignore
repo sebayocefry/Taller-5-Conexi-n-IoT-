@@ -17,3 +17,5 @@
 # Archivos del sistema
 .DS_Store
 Thumbs.db
+# Caché de compilación de TypeScript
+**/*.tsbuildinfo
