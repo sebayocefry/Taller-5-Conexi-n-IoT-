@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {InjectModel} from '@nestjs/mongoose';
 import type {Model} from 'mongoose';
 import {SensorReading} from './schemas/sensor-reading-schema.js'
@@ -12,5 +12,19 @@ export class SensorDataService {
         const reading = new this.SensorReadingModel(data);
 
         return await reading.save();
+    }
+
+    async findLatest(deviceId: string){
+        const reading = await this.SensorReadingModel
+        .findOne({deviceId})
+        .sort({receivedAt:-1})
+        .exec();
+
+        if(!reading){
+            throw new NotFoundException("no se encontraron lecturas para el dispositivo: "+deviceId);
+        }
+
+        return reading;
+
     }
 }
