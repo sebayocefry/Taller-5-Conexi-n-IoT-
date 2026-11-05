@@ -1,71 +1,49 @@
-# Backend — Taller 5: Conexión IoT
+# Taller 5 — Conexión IoT
 
-Backend de una plataforma de monitoreo IoT desarrollada con **NestJS y TypeScript**. Su objetivo es recibir mediciones enviadas por un **ESP32 cada 10 segundos**, guardarlas y exponerlas al frontend para visualización y análisis.
+Plataforma de monitoreo de sensores IoT desarrollada para el **Taller 5 de NoSQL**. El sistema está diseñado para recibir mediciones de un **ESP32 cada 10 segundos**, conservar un historial en MongoDB y mostrar la información desde una interfaz web.
 
-> **Estado:** arquitectura y estructura inicial definidas. Los módulos y funcionalidades descritos a continuación son una **propuesta de implementación**; su aparición en este documento no significa que ya estén terminados.
 
-## 1. Requisitos del taller
+## Objetivo
 
-- Implementar obligatoriamente **`POST /sensor-data`**, compatible con el JSON enviado por el ESP32.
-- Utilizar **MongoDB** como base de datos obligatoria.
-- Incorporar una **segunda base de datos** de otro modelo. Elegimos **Redis (clave-valor)**.
-- Facilitar la visualización de datos actualizados desde el frontend (polling inicialmente; WebSocket como mejora opcional).
-- Desplegar la aplicación para permitir el acceso del profesor.
-- Documentar tanto la **arquitectura del sistema** como la **arquitectura del software**.
+Construir una solución que permita:
 
-## 2. Tecnologías previstas
+- Recibir datos de temperatura, humedad y nivel de agua enviados por un ESP32.
+- Almacenar las mediciones en **MongoDB** para mantener su historial.
+- Incorporar una segunda base de datos NoSQL, **Redis**, con un propósito distinto: consultar el último dato y gestionar el estado de los dispositivos.
+- Visualizar las mediciones actualizadas en un frontend sencillo, utilizando *polling* o WebSocket.
+- Publicar la aplicación para permitir su acceso externo.
 
-| Tecnología | Uso |
-|---|---|
-| NestJS + TypeScript (ESM) | API HTTP y lógica de negocio |
-| MongoDB + Mongoose | Historial persistente de mediciones |
-| Redis | Última medición, estado del dispositivo y caché |
-| HTTP REST | Recepción y consulta de datos |
-| WebSocket | Actualización push en tiempo real (opcional, fase posterior) |
+## Tecnologías
 
-## 3. Organización propuesta de `src/`
+| Componente | Tecnología | Estado |
+|---|---|---|
+| Backend y API REST | NestJS + TypeScript | Implementado |
+| Validación de datos | Zod | Implementado |
+| Base de datos histórica | MongoDB Atlas + Mongoose | Implementado |
+| Base de datos clave-valor | Redis | Pendiente |
+| Interfaz web | React | Pendiente de integración |
+| Actualización de datos | Polling o WebSocket | Por definir |
+| Despliegue público | Por definir | Pendiente |
 
-```text
-src/
-├── main.ts
-├── app.module.ts
-├── sensor-data/
-│   ├── sensor-data.module.ts
-│   ├── sensor-data.controller.ts
-│   ├── sensor-data.service.ts
-│   ├── dto/
-│   │   └── create-sensor-reading.dto.ts       # A definir/ajustar
-│   └── schemas/
-│       └── sensor-reading.schema.ts           # Por implementar
-├── redis/
-│   ├── redis.module.ts
-│   └── redis.service.ts                       # Por implementar
-├── analytics/
-│   ├── analytics.module.ts
-│   ├── analytics.controller.ts                # Cuando se necesite
-│   └── analytics.service.ts                   # Por implementar
-└── realtime/
-    ├── realtime.module.ts
-    └── realtime.gateway.ts                   # Opcional
+## Arquitectura del sistema
+
+La arquitectura objetivo contempla el siguiente flujo:
+
+```mermaid
+flowchart LR
+    ESP[ESP32] -->|HTTP POST cada 10 s| API[API REST · NestJS]
+    API -->|Guardar historial| M[(MongoDB)]
+    API -.->|Última medición y actividad| R[(Redis)]
+    UI[Frontend · React] -->|Consultas HTTP| API
 ```
 
+**Líneas continuas:** componentes y comunicaciones considerados en el diseño; no implican que la conexión física con el ESP32 ni el frontend estén terminados. **Línea discontinua:** integración con Redis pendiente.
 
-### Responsabilidad de cada módulo
+Actualmente, el flujo **probado** es la recepción de solicitudes HTTP, su validación y almacenamiento en MongoDB, junto con las consultas a través de Postman.
 
-| Módulo | Responsabilidad | Fuera de su responsabilidad |
-|---|---|---|
-| `sensor-data` | Validar el JSON, registrar mediciones y ofrecer consultas de historial | Renderizar gráficos |
-| `redis` | Centralizar la conexión y operaciones de clave-valor | Decidir reglas de negocio de sensores |
-| `analytics` | Calcular promedios, tendencias y resúmenes | Recibir directamente datos del ESP32 |
-| `realtime` | Notificar nuevas mediciones a clientes conectados, si se implementa WebSocket | Persistir mediciones |
+## Datos enviados por el ESP32
 
-**Convención:** los controladores reciben las solicitudes; los servicios concentran la lógica; los DTO validan la entrada; los schemas definen documentos de MongoDB. `AppModule` compone los módulos. Un módulo solo debe exportar los servicios que otros necesiten; se deben evitar dependencias circulares.
-
-## 4. Contrato de entrada obligatorio
-
-### `POST /sensor-data`
-
-El profesor enviará un cuerpo JSON con **estos nombres exactos**:
+El endpoint obligatorio del taller es `POST /sensor-data`. El cuerpo de la solicitud tiene este formato:
 
 ```json
 {
@@ -76,93 +54,103 @@ El profesor enviará un cuerpo JSON con **estos nombres exactos**:
 }
 ```
 
-| Campo | Tipo esperado | Significado |
-|---|---|---|
-| `deviceId` | string no vacío | Identificador del dispositivo |
-| `temperatura` | number | Temperatura, con dos decimales según el enunciado |
-| `humedad` | number | Humedad, con dos decimales según el enunciado |
-| `nivelAgua` | integer, 0 a 4 | Nivel de agua por tramos |
+| Campo | Descripción |
+|---|---|
+| `deviceId` | Identificador del dispositivo |
+| `temperatura` | Temperatura expresada como número |
+| `humedad` | Humedad entre 0 y 100 |
+| `nivelAgua` | Nivel entero entre 0 y 4 |
 
-Correspondencia de `nivelAgua`: **0 = 0%, 1 = 25%, 2 = 50%, 3 = 75%, 4 = 100%**.
+El nivel de agua representa los valores **0 %, 25 %, 50 %, 75 % y 100 %**, respectivamente. El enunciado indica valores con dos decimales para temperatura y humedad; la validación actual del backend acepta números sin exigir exactamente dos decimales.
 
-**Validaciones propuestas:** verificar tipos, valores numéricos finitos, rango de `nivelAgua` y que `deviceId` no sea vacío. Si la humedad corresponde a humedad relativa porcentual, validar además que esté entre 0 y 100. Definiremos antes de implementar si se exige estrictamente la precisión de dos decimales.
+## API REST
 
-**Importante:** no cambiar los nombres de las propiedades del JSON de entrada. Los datos inválidos deben recibir una respuesta HTTP de error clara, sin guardar una medición incompleta.
+**Base local:** `http://localhost:3000`
 
-## 5. Persistencia en MongoDB
+| Método | Endpoint | Descripción | Estado |
+|---|---|---|---|
+| `POST` | `/sensor-data` | Recibe y almacena una medición | Implementado |
+| `GET` | `/sensor-data/latest?deviceId=esp32_1` | Obtiene la última medición del dispositivo | Implementado |
+| `GET` | `/sensor-data/history?deviceId=esp32_1` | Consulta el historial del dispositivo | Implementado |
+| `GET` | `/analytics/summary` | Resumen estadístico | Propuesto |
 
-Colección propuesta: `sensor_readings`. Cada medición se guarda como un **documento independiente**, para conservar el historial completo.
+El historial admite los parámetros opcionales `limit` (de 1 a 100; predeterminado: 50), `from` y `to` (fechas ISO 8601 con zona horaria). Los resultados se devuelven desde el más reciente al más antiguo.
 
-```json
-{
-  "deviceId": "esp32_1",
-  "temperatura": 24.56,
-  "humedad": 65.32,
-  "nivelAgua": 3,
-  "receivedAt": "2026-11-01T20:00:00.000Z"
-}
+Para conocer los formatos de respuesta, las validaciones, los errores y los detalles de implementación, consulta la **[documentación del backend](backend/README.md)**.
+
+## Organización del repositorio
+
+La estructura general prevista para el proyecto es:
+
+```text
+.
+├── backend/            # API REST, validación y persistencia
+│   └── README.md       # Documentación técnica del backend
+├── frontend/           # Aplicación React (pendiente de integración)
+└── README.md           # Visión general del proyecto
 ```
 
-`receivedAt` lo establece el backend, ya que el ESP32 no envía una marca temporal. MongoDB generará también su identificador `_id`.
+> La carpeta `frontend/` representa la organización prevista. Ajustar esta sección a la estructura real del repositorio cuando se incorpore el frontend.
 
-**Índice previsto:** `{ deviceId: 1, receivedAt: -1 }`, útil para obtener las mediciones más recientes de un dispositivo.
+### Arquitectura del software
 
-## 6. Uso de Redis (segunda base de datos)
+El backend está organizado por módulos de NestJS:
 
-Redis tendrá un propósito explícito y distinto de MongoDB:
+- **`sensor-data`**: controladores, servicios, DTO y esquema de MongoDB para recibir y consultar mediciones.
+- **`redis`** *(pendiente)*: almacenamiento clave-valor de la última lectura y actividad del dispositivo.
+- **`analytics`** *(pendiente)*: cálculos de promedios, estadísticas y tendencias.
+- **`realtime`** *(opcional)*: comunicación mediante WebSocket, si se adopta este mecanismo.
 
-| Clave sugerida | Contenido | Política |
-|---|---|---|
-| `device:{deviceId}:latest` | Última medición conocida | Se actualiza en cada recepción |
-| `device:{deviceId}:heartbeat` | Señal reciente del dispositivo | TTL propuesto de 40 segundos |
-| `stats:{deviceId}:hourly:*` | Resultados estadísticos cacheados | TTL por definir |
+La arquitectura del sistema describe cómo se conectan ESP32, backend, bases de datos y frontend; la arquitectura del software describe la organización interna de las funcionalidades.
 
-La **fuente de verdad del historial es MongoDB**. Redis acelera las consultas recientes y permite detectar cuando un dispositivo deja de enviar datos.
+## Ejecutar el backend localmente
 
-Flujo previsto de una medición válida:
+**Requisitos:** Node.js, npm y acceso a una instancia de MongoDB Atlas.
 
-1. `SensorDataController` recibe el JSON.
-2. El DTO valida los datos.
-3. `SensorDataService` guarda la medición en MongoDB.
-4. El servicio actualiza la última medición y el estado en Redis.
-5. Se confirma la recepción; en una fase posterior puede emitirse un evento WebSocket.
+1. Entrar a la carpeta del backend e instalar dependencias:
 
-Si falla Redis **después** de guardar en MongoDB, la medición no debe perderse. Se registrará el error y podrá consultarse el dato persistido en MongoDB. El comportamiento HTTP exacto se acordará al implementar y documentar el endpoint.
+   ```bash
+   cd backend
+   npm install
+   ```
 
-## 7. Endpoints previstos
+2. Crear `backend/.env` con una URI de conexión válida:
 
-> Solo `POST /sensor-data` es obligatorio según el taller. Las demás rutas son propuestas para el dashboard y pueden ajustarse **antes** de que el frontend dependa de ellas.
+   ```dotenv
+   MONGODB_URI=mongodb+srv://USUARIO:CONTRASENA@CLUSTER.mongodb.net/
+   ```
 
-| Método | Ruta | Objetivo |
-|---|---|---|
-| `POST` | `/sensor-data` | Registrar nueva medición |
-| `GET` | `/sensor-data/latest?deviceId=esp32_1` | Obtener la última medición |
-| `GET` | `/sensor-data/history?deviceId=esp32_1&limit=10` | Obtener últimas mediciones |
-| `GET` | `/analytics/summary?deviceId=esp32_1` | Obtener estadísticas/resumen |
+3. Iniciar el servidor en modo desarrollo:
 
-Los parámetros, respuestas y códigos HTTP definitivos se documentarán en `docs/api-contract.md` **antes de integrar React**. Hasta entonces, no asumir que estas rutas GET ya existen.
+   ```bash
+   npm run start:dev
+   ```
 
+La API estará disponible en `http://localhost:3000`. Puedes probar sus endpoints desde Postman. Para comprobar la compilación, ejecuta `npm run build` desde `backend/`.
 
+**Seguridad:** no publiques contraseñas, cadenas de conexión reales ni archivos `.env` en GitHub.
 
+## Estado de avance
 
-## 9. Orden de implementación acordado
+- [x] Backend NestJS configurado.
+- [x] Validación de las mediciones con Zod.
+- [x] Conexión y persistencia en MongoDB Atlas.
+- [x] Registro de mediciones con `POST /sensor-data`.
+- [x] Consulta de última medición e historial, con límite y filtro de fechas.
+- [x] Pruebas de los endpoints mediante Postman.
+- [ ] Integración de Redis como segunda base de datos NoSQL.
+- [ ] Estadísticas, promedios y tendencias.
+- [ ] Interfaz React con actualización de mediciones.
+- [ ] Pruebas de extremo a extremo con el ESP32.
+- [ ] Despliegue público y verificación de acceso externo.
+- [ ] Extras opcionales: gráficos, indicadores visuales y alertas.
 
-- [ ] Proyecto NestJS creado y ejecutándose.
-- [ ] Módulos iniciales generados y registrados.
-- [ ] DTO para las mediciones y validación de entrada.
-- [ ] Schema y conexión con MongoDB.
-- [ ] `POST /sensor-data` funcionando y probado.
-- [ ] Consultas `latest` e `history`.
-- [ ] Integración de Redis para último dato y actividad.
-- [ ] Estadísticas y tendencias.
-- [ ] Contrato de API revisado con el equipo frontend.
-- [ ] Pruebas de integración y despliegue accesible desde Internet.
-- [ ] WebSocket y alertas, si el alcance y el tiempo lo permiten.
+## Alcance del taller
 
+La evaluación contempla cinco criterios con la misma ponderación (**20 % cada uno**): backend funcionando, uso de MongoDB, uso de una segunda base de datos, frontend funcional y creatividad o funcionalidades adicionales. También se solicita presentar por separado la **arquitectura del sistema** y la **arquitectura del software**.
 
-##  Documentación de arquitectura
+Las ideas adicionales propuestas en el enunciado —como gráficos en tiempo real, histórico de las últimas lecturas, caché y alertas por temperatura o nivel de agua— son opciones de ampliación, no funcionalidades ya implementadas.
 
-La entrega requiere dos vistas diferentes:
+---
 
-- **Arquitectura del sistema:** ESP32 → API desplegada → MongoDB/Redis → navegador con React; incluye las comunicaciones entre componentes y el hosting.
-- **Arquitectura del software:** módulos internos de NestJS, responsabilidades, controladores, servicios, DTO, schemas y dependencias.
+**Proyecto académico — Taller 5: Conexión IoT.**

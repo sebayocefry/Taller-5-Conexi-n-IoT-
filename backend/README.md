@@ -1,114 +1,415 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Backend — Taller 5: Conexión IoT
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend de una plataforma de monitoreo IoT desarrollada con **NestJS y TypeScript**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Su objetivo es recibir mediciones enviadas por un **ESP32 cada 10 segundos**, almacenarlas en MongoDB y exponerlas mediante una API REST para su visualización y análisis desde un frontend React.
 
-## Description
+**Estado actual:** recepción, validación, persistencia y consultas históricas implementadas y probadas con Postman y MongoDB Atlas. La integración con Redis, Analytics, frontend y despliegue continúa pendiente.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## 1. Requisitos del taller
 
-## Project setup
+- Implementar obligatoriamente `POST /sensor-data`, compatible con el JSON enviado por el ESP32.
+- Utilizar **MongoDB** como base de datos obligatoria.
+- Incorporar una segunda base de datos NoSQL de otro modelo: **Redis (clave-valor)**.
+- Permitir la visualización de mediciones actualizadas desde el frontend.
+- Desplegar la aplicación para permitir el acceso del profesor.
+- Documentar la arquitectura del sistema y la arquitectura del software.
 
-```bash
-$ npm install
+## 2. Tecnologías
+
+| Tecnología | Uso | Estado |
+|---|---|---|
+| NestJS + TypeScript (ESM) | API HTTP y lógica de negocio | Implementado |
+| Zod | Validación de entradas | Implementado |
+| MongoDB Atlas + Mongoose | Persistencia del historial | Implementado |
+| HTTP REST | Recepción y consulta de mediciones | Implementado |
+| Redis | Última medición, estado y caché | Pendiente |
+| WebSocket | Actualización push en tiempo real | Opcional |
+
+## 3. Organización del backend
+
+Estructura principal de `src/`:
+
+```text
+src/
+├── main.ts
+├── app.module.ts
+├── sensor-data/
+│   ├── sensor-data.module.ts
+│   ├── sensor-data.controller.ts
+│   ├── sensor-data.service.ts
+│   ├── dto/
+│   │   ├── create-sensor-data.dto.ts
+│   │   ├── get-latest-sensor-data.dto.ts
+│   │   └── get-history-sensor-data.dto.ts
+│   └── schemas/
+│       └── sensor-reading.schema.ts
+├── redis/
+│   └── ...
+├── analytics/
+│   └── ...
+└── realtime/
+    └── ...
 ```
 
-## Compile and run the project
+Los tres últimos módulos forman parte de la arquitectura planificada, pero sus funcionalidades todavía no están integradas.
 
-```bash
-# development
-$ npm run start
+### Responsabilidad de cada módulo
 
-# watch mode
-$ npm run start:dev
+| Módulo | Responsabilidad |
+|---|---|
+| `sensor-data` | Validar, registrar y consultar mediciones |
+| `redis` | Gestionar la conexión y operaciones clave-valor |
+| `analytics` | Calcular estadísticas, promedios y tendencias |
+| `realtime` | Notificar nuevas mediciones, si se implementa WebSocket |
 
-# production mode
-$ npm run start:prod
+**Convención:** los controladores reciben solicitudes HTTP, los servicios implementan la lógica de negocio, los DTO validan las entradas y los schemas definen los documentos de MongoDB. `AppModule` compone los módulos.
+
+## 4. Contrato de entrada del ESP32
+
+### `POST /sensor-data`
+
+El ESP32 debe enviar un JSON con estos nombres exactos:
+
+```json
+{
+  "deviceId": "esp32_1",
+  "temperatura": 24.56,
+  "humedad": 65.32,
+  "nivelAgua": 3
+}
 ```
 
-## Run tests
+| Campo | Tipo | Validación |
+|---|---|---|
+| `deviceId` | string | No vacío después de eliminar espacios exteriores |
+| `temperatura` | number | Número válido |
+| `humedad` | number | Entre 0 y 100 |
+| `nivelAgua` | integer | Entre 0 y 4 |
 
-```bash
-# unit tests
-$ npm run test
+Correspondencia del nivel de agua:
 
-# e2e tests
-$ npm run test:e2e
+| Valor | Porcentaje |
+|---|---|
+| 0 | 0 % |
+| 1 | 25 % |
+| 2 | 50 % |
+| 3 | 75 % |
+| 4 | 100 % |
 
-# test coverage
-$ npm run test:cov
+La validación se realiza mediante Zod. Actualmente no se exige que la temperatura y la humedad tengan exactamente dos decimales.
+
+Las solicitudes que no cumplen el esquema son rechazadas antes de guardar la medición.
+
+## 5. Persistencia en MongoDB
+
+La base de datos configurada es `taller5iot` y la colección de mediciones es `sensor_readings`.
+
+Cada medición se almacena como un documento independiente para conservar su historial.
+
+Ejemplo de documento:
+
+```json
+{
+  "_id": "6aebd03a6c01b9b893705e3b",
+  "deviceId": "esp32_1",
+  "temperatura": 28.6,
+  "humedad": 53.8,
+  "nivelAgua": 0,
+  "receivedAt": "2026-11-05T00:39:22.340Z",
+  "__v": 0
+}
 ```
 
-## Deployment
+- `_id`: identificador generado por MongoDB.
+- `receivedAt`: fecha y hora asignadas automáticamente por el backend, almacenadas en UTC.
+- `__v`: campo de versionado administrado por Mongoose.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+El ESP32 no necesita enviar `receivedAt`.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Índice de consulta
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```typescript
+SensorReadingSchema.index({
+  deviceId: 1,
+  receivedAt: -1,
+});
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Este índice compuesto favorece las consultas de mediciones por dispositivo, ordenadas desde la más reciente.
 
-## Observability
+## 6. Uso previsto de Redis
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+Redis será nuestra segunda base de datos NoSQL, con un propósito diferente al de MongoDB.
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+| Clave propuesta | Contenido | Política |
+|---|---|---|
+| `device:{deviceId}:latest` | Última medición | Actualización por recepción |
+| `device:{deviceId}:heartbeat` | Actividad reciente | TTL propuesto de 40 segundos |
+| `stats:{deviceId}:hourly:*` | Estadísticas cacheadas | TTL por definir |
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+**MongoDB será la fuente de verdad del historial.** Redis permitirá acelerar la recuperación de la última medición y detectar dispositivos que dejan de transmitir.
 
-## Resources
+Flujo propuesto:
 
-Check out a few resources that may come in handy when working with NestJS:
+1. El ESP32 envía una medición.
+2. NestJS valida el JSON.
+3. `SensorDataService` guarda el documento en MongoDB.
+4. El backend actualiza la última lectura y el heartbeat en Redis.
+5. El frontend consulta los datos para mostrarlos.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+**Importante:** la etapa de Redis aún no está implementada. Actualmente el flujo termina con la persistencia en MongoDB.
 
-## Support
+## 7. Documentación de la API REST
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+**URL base en desarrollo:** `http://localhost:3000`
 
-## Stay in touch
+Los endpoints siguientes están implementados y han sido probados mediante Postman.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### 7.1. Registrar una medición
 
-## License
+**`POST /sensor-data`**
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Guarda una nueva medición en MongoDB Atlas.
+
+**Body (JSON):**
+
+```json
+{
+  "deviceId": "esp32_1",
+  "temperatura": 24.56,
+  "humedad": 65.32,
+  "nivelAgua": 3
+}
+```
+
+**Respuesta exitosa: HTTP 201 Created**
+
+Devuelve el documento guardado, incluyendo su `_id` y `receivedAt`.
+
+**Errores:**
+
+- `400 Bad Request`: cuerpo JSON inválido o campos que no cumplen las validaciones.
+- Los errores de almacenamiento se gestionan mediante el manejo de excepciones de NestJS y Mongoose.
+
+### 7.2. Obtener la última medición
+
+**`GET /sensor-data/latest`**
+
+Devuelve la medición más reciente de un dispositivo.
+
+**Parámetros:**
+
+| Parámetro | Tipo | Obligatorio |
+|---|---|---|
+| `deviceId` | string | Sí |
+
+**Ejemplo:**
+
+```http
+GET /sensor-data/latest?deviceId=esp32_1
+```
+
+**Respuesta exitosa: HTTP 200 OK**
+
+```json
+{
+  "_id": "6aebd03a6c01b9b893705e3b",
+  "deviceId": "esp32_1",
+  "temperatura": 28.6,
+  "humedad": 53.8,
+  "nivelAgua": 0,
+  "receivedAt": "2026-11-05T00:39:22.340Z",
+  "__v": 0
+}
+```
+
+**Errores:**
+
+- `400 Bad Request`: falta `deviceId` o es inválido.
+- `404 Not Found`: no existen mediciones para ese dispositivo.
+
+**Nota:** actualmente la consulta obtiene la última medición desde MongoDB. La integración con Redis queda pendiente.
+
+### 7.3. Consultar historial de mediciones
+
+**`GET /sensor-data/history`**
+
+Obtiene el historial de un dispositivo con filtros opcionales por cantidad y fechas.
+
+**Parámetros:**
+
+| Parámetro | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| `deviceId` | string | Sí | Dispositivo a consultar |
+| `limit` | integer | No | Máximo de resultados, entre 1 y 100. Predeterminado: 50 |
+| `from` | ISO datetime | No | Fecha inicial inclusiva |
+| `to` | ISO datetime | No | Fecha final inclusiva |
+
+Las fechas deben utilizar el formato ISO 8601 con zona horaria, por ejemplo `2026-11-05T00:00:00Z`.
+
+**Ejemplo 1: últimas tres mediciones**
+
+```http
+GET /sensor-data/history?deviceId=esp32_1&limit=3
+```
+
+**Ejemplo 2: historial entre dos fechas**
+
+```http
+GET /sensor-data/history?deviceId=esp32_1&from=2026-11-04T00:00:00Z&to=2026-11-05T23:59:59Z
+```
+
+**Respuesta exitosa: HTTP 200 OK**
+
+Devuelve un arreglo de documentos:
+
+```json
+[
+  {
+    "_id": "6aebd03a6c01b9b893705e3b",
+    "deviceId": "esp32_1",
+    "temperatura": 28.6,
+    "humedad": 53.8,
+    "nivelAgua": 0,
+    "receivedAt": "2026-11-05T00:39:22.340Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aebd0336c01b9b893705e3a",
+    "deviceId": "esp32_1",
+    "temperatura": 27.1,
+    "humedad": 55.3,
+    "nivelAgua": 1,
+    "receivedAt": "2026-11-05T00:39:15.886Z",
+    "__v": 0
+  }
+]
+```
+
+**Comportamiento:**
+
+- Los resultados se ordenan por `receivedAt`, desde el más reciente al más antiguo.
+- `limit` restringe la cantidad máxima de documentos.
+- `from` y `to` filtran el historial por fecha.
+- Si no existen mediciones coincidentes, devuelve `[]`.
+
+**Errores:**
+
+- `400 Bad Request`: falta `deviceId`, `limit` es inválido, las fechas tienen un formato incorrecto o `from` es posterior a `to`.
+
+### 7.4. Resumen de endpoints
+
+| Método | Ruta | Estado |
+|---|---|---|
+| POST | `/sensor-data` | Implementado |
+| GET | `/sensor-data/latest` | Implementado |
+| GET | `/sensor-data/history` | Implementado |
+| GET | `/analytics/summary` | Propuesto |
+
+La respuesta de `history` es un **arreglo JSON**, mientras que `latest` devuelve un **objeto JSON**. Esta diferencia debe considerarse al consumir los endpoints desde React.
+
+## 8. Configuración y ejecución local
+
+### Requisitos
+
+- Node.js compatible con el proyecto.
+- npm.
+- Acceso a MongoDB Atlas.
+- Variables de entorno configuradas.
+
+### Instalación
+
+Desde la carpeta `backend/`:
+
+```bash
+npm install
+```
+
+Crear el archivo `.env` a partir del ejemplo y configurar la conexión:
+
+```dotenv
+MONGODB_URI=mongodb+srv://USUARIO:CONTRASENA@CLUSTER.mongodb.net/
+```
+
+La URI anterior es ilustrativa. Deben utilizarse las credenciales y la dirección reales de Atlas.
+
+El archivo `.env` está excluido mediante `.gitignore` y **no debe subirse a GitHub**.
+
+### Ejecutar en desarrollo
+
+```bash
+npm run start:dev
+```
+
+La API queda disponible en:
+
+```text
+http://localhost:3000
+```
+
+### Comprobar compilación
+
+```bash
+npm run build
+```
+
+Para realizar pruebas manuales de los endpoints se utiliza Postman.
+
+## 9. Estado de implementación
+
+- [x] Proyecto NestJS creado y ejecutándose.
+- [x] Módulos iniciales generados.
+- [x] DTO y validación de mediciones mediante Zod.
+- [x] Schema de Mongoose y conexión con MongoDB Atlas.
+- [x] `POST /sensor-data` funcionando y probado.
+- [x] `GET /sensor-data/latest` funcionando y probado.
+- [x] `GET /sensor-data/history` con límite funcionando y probado.
+- [x] Filtro del historial por fechas implementado y consulta válida probada.
+- [x] Documentación inicial de la API.
+- [ ] Integración de Redis para último dato y actividad.
+- [ ] Estadísticas y tendencias.
+- [ ] Integración de la API con React.
+- [ ] Pruebas integrales con ESP32.
+- [ ] Despliegue accesible desde Internet.
+- [ ] WebSocket y alertas, si el alcance y el tiempo lo permiten.
+
+## 10. Documentación de arquitectura
+
+La entrega contempla dos perspectivas:
+
+**Arquitectura del sistema**
+
+Describe la comunicación entre los componentes:
+
+```text
+ESP32
+  |
+  | HTTP POST
+  v
+Backend NestJS
+  |         |
+  v         v
+MongoDB   Redis
+  |
+  | Consultas REST
+  v
+Frontend React
+```
+
+Este diagrama representa la arquitectura objetivo. Redis y la integración con React todavía están pendientes.
+
+**Arquitectura del software**
+
+Describe la organización interna del backend:
+
+- `AppModule`: composición de módulos y configuración general.
+- `SensorDataController`: rutas HTTP y recepción de solicitudes.
+- DTO de Zod: validación y transformación de entradas.
+- `SensorDataService`: operaciones de persistencia y consultas.
+- `SensorReadingSchema`: estructura e índices de MongoDB.
+- `RedisModule`: operaciones clave-valor pendientes.
+- `AnalyticsModule`: estadísticas pendientes.
+- `RealtimeModule`: comunicaciones WebSocket opcionales.
+
+La documentación será ampliada a medida que se completen las siguientes etapas del proyecto.
