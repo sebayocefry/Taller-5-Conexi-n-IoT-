@@ -25,6 +25,6 @@ export class SensorDataController {
   findHistory(
     @Query({schema:getHistorySensorDataSchema})
     query: GetHistorySensorDataDto,
-  ){return this.sensorDataService.findHistory(query.deviceId,query.limit,)};
+  ){return this.sensorDataService.findHistory(query)};
 };
 
