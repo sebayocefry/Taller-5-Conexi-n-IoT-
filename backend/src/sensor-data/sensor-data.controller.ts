@@ -1,7 +1,9 @@
 import { Controller, Body,Post, Get, Query } from '@nestjs/common';
 import { SensorDataService } from './sensor-data.service.js';
-import { createSensorDataSchema, type CreateSensorDataDto} from './dto/create--sensor-data.dto.js'
-import {getLatestSensorDataSchema type GetLatestSensorDataDto} from  './dto/get-latest-sensor-data.dto.js'
+import { createSensorDataSchema, type CreateSensorDataDto} from './dto/create--sensor-data.dto.js';
+import {getLatestSensorDataSchema, type GetLatestSensorDataDto,} from  './dto/get-latest-sensor-data.dto.js';
+import {getHistorySensorDataSchema, type GetHistorySensorDataDto,} from './dto/get-history-sensor-data.dto.js';
+
 @Controller('sensor-data')
 export class SensorDataController {
   constructor(private readonly sensorDataService: SensorDataService) {}
@@ -18,4 +20,11 @@ export class SensorDataController {
     @Query({schema:getLatestSensorDataSchema})
     query: GetLatestSensorDataDto,
   ){return this.sensorDataService.findLatest(query.deviceId)}
-}
+
+  @Get('history')
+  findHistory(
+    @Query({schema:getHistorySensorDataSchema})
+    query: GetHistorySensorDataDto,
+  ){return this.sensorDataService.findHistory(query.deviceId,query.limit,)};
+};
+

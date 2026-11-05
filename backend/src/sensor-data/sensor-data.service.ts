@@ -27,4 +27,12 @@ export class SensorDataService {
         return reading;
 
     }
+
+    async findHistory(deviceId: string, limit:number){
+        return this.SensorReadingModel
+            .find({deviceId})
+            .sort({receivedAt:-1})
+            .limit(limit)
+            .exec();                                                                                                                               
+    }
 }
