@@ -45,7 +45,8 @@ src/
 │   └── schemas/
 │       └── sensor-reading.schema.ts
 ├── redis/
-│   └── ...
+│   └── redis.module.ts
+|   └─── redis.service.ts
 ├── analytics/
 │   └── ...
 └── realtime/
@@ -138,27 +139,32 @@ SensorReadingSchema.index({
 
 Este índice compuesto favorece las consultas de mediciones por dispositivo, ordenadas desde la más reciente.
 
-## 6. Uso previsto de Redis
+## 6. Documentación de Redis (Segunda Base de Datos NoSQL)
 
-Redis será nuestra segunda base de datos NoSQL, con un propósito diferente al de MongoDB.
+Redis se implementó como la segunda base de datos del sistema, operando bajo el modelo **Clave-Valor en memoria (RAM)**. Su propósito es garantizar lecturas de ultra baja latencia (<1 ms) para el frontend y supervisar la actividad en tiempo real del microcontrolador ESP32.
 
-| Clave propuesta | Contenido | Política |
-|---|---|---|
-| `device:{deviceId}:latest` | Última medición | Actualización por recepción |
-| `device:{deviceId}:heartbeat` | Actividad reciente | TTL propuesto de 40 segundos |
-| `stats:{deviceId}:hourly:*` | Estadísticas cacheadas | TTL por definir |
+### 6.1. Claves Utilizadas y Políticas de Expiración (TTL)
 
-**MongoDB será la fuente de verdad del historial.** Redis permitirá acelerar la recuperación de la última medición y detectar dispositivos que dejan de transmitir.
+| Clave en Redis | Tipo de Dato | Política de Expiración (TTL) | Propósito y Justificación Técnica |
+|---|---|---|---|
+| `device:last:{deviceId}` | `String` (JSON serializado) | **Sin expiración (Persistente en memoria)** | Almacena la última medición recibida del sensor. Permite responder al endpoint `GET /sensor-data/latest` sin consultar el disco en MongoDB, reduciendo el consumo de recursos. |
+| `device:heartbeat:{deviceId}` | `String` (`"online"`) | **30 segundos** | Funciona como señal de vida (*Heartbeat*). El ESP32 transmite cada 10 s; si transcurren 30 s sin recibir paquetes (3 intentos fallidos), Redis elimina automáticamente la clave, detectando que el sensor está `OFFLINE`. |
 
-Flujo propuesto:
+### 6.2. Estrategia de Caché y Resiliencia (Cache-Aside & Fallback)
 
-1. El ESP32 envía una medición.
-2. NestJS valida el JSON.
-3. `SensorDataService` guarda el documento en MongoDB.
-4. El backend actualiza la última lectura y el heartbeat en Redis.
-5. El frontend consulta los datos para mostrarlos.
+1. **Recepción (`POST /sensor-data`):**
+   - El dato se guarda obligatoriamente en **MongoDB** (persistencia histórica).
+   - Inmediatamente se actualiza `device:last:{deviceId}` y se renueva el TTL de `device:heartbeat:{deviceId}` en **Redis**.
+   - Si Redis estuviera caído o fuera de línea, la excepción se captura en un bloque `try/catch` para **no interrumpir** el almacenamiento en MongoDB.
 
-**Importante:** la etapa de Redis aún no está implementada. Actualmente el flujo termina con la persistencia en MongoDB.
+2. **Consulta rápida (`GET /sensor-data/latest`):**
+   - **Cache Hit:** Si la clave existe en Redis, se devuelve de inmediato desde la memoria RAM.
+   - **Cache Miss:** Si Redis se reinició o no tiene la clave, el backend consulta a MongoDB, devuelve el dato y repuebla Redis de forma transparente.
+
+3. **Monitoreo de estado (`GET /sensor-data/status`):**
+   - Consulta la existencia (`EXISTS`) de la clave `device:heartbeat:{deviceId}`.
+   - Retorna `{ "status": "ONLINE" }` si la clave sigue viva, o `{ "status": "OFFLINE" }` si el TTL expiró.
+
 
 ## 7. Documentación de la API REST
 
@@ -298,7 +304,22 @@ Devuelve un arreglo de documentos:
 
 - `400 Bad Request`: falta `deviceId`, `limit` es inválido, las fechas tienen un formato incorrecto o `from` es posterior a `to`.
 
-### 7.4. Resumen de endpoints
+### 7.4. Consultar Estado de Conexión del Dispositivo
+
+**`GET /sensor-data/status?deviceId=esp32_1`**
+Determina en tiempo real si el ESP32 está transmitiendo activamente utilizando el TTL en Redis.
+**Parámetros Query:**
+- `deviceId` (string, obligatorio): Identificador del dispositivo.
+**Respuesta exitosa: HTTP 200 OK**
+```json
+{
+  "deviceId": "esp32_1",
+  "status": "ONLINE"
+}
+```
+*(Si el sensor no ha enviado datos en los últimos 30 segundos, `status` cambiará automáticamente a `"OFFLINE"`).*
+
+### 7.5. Resumen de endpoints
 
 | Método | Ruta | Estado |
 |---|---|---|
@@ -306,6 +327,7 @@ Devuelve un arreglo de documentos:
 | GET | `/sensor-data/latest` | Implementado |
 | GET | `/sensor-data/history` | Implementado |
 | GET | `/analytics/summary` | Propuesto |
+| GET | `/sensor-data/status?deviceId=esp32_1` | Implementado |
 
 La respuesta de `history` es un **arreglo JSON**, mientras que `latest` devuelve un **objeto JSON**. Esta diferencia debe considerarse al consumir los endpoints desde React.
 

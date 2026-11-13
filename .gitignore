@@ -19,3 +19,4 @@
 Thumbs.db
 # Caché de compilación de TypeScript
 **/*.tsbuildinfo
+*.tsbuildinfo

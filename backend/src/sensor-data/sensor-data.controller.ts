@@ -21,6 +21,14 @@ export class SensorDataController {
     query: GetLatestSensorDataDto,
   ){return this.sensorDataService.findLatest(query.deviceId)}
 
+  // NUEVO: Endpoint para verificar estado de conexión (requisito de detección de inactividad)
+  @Get('status')
+  getStatus(
+    @Query('deviceId') deviceId: string,
+  ) {
+    return this.sensorDataService.getDeviceStatus(deviceId);
+  }
+
   @Get('history')
   findHistory(
     @Query({schema:getHistorySensorDataSchema})
