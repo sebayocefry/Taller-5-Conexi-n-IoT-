@@ -72,18 +72,18 @@ export class SensorDataService {
 
     async findHistory({ deviceId, limit, from, to }: GetHistorySensorDataDto) {
 
-        const filter: QueryFilter<SensorReading> = { deviceId, };
+        const filter: QueryFilter<SensorReading> = { deviceId };
 
         if (from || to) {
             filter.receivedAt = {
                 ...(from ? { $gte: new Date(from) } : {}),
-                ...(to ? { $gte: new Date(to) } : {}),
+                ...(to ? { $lte: new Date(to) } : {}),
             };
         };
 
 
         return this.SensorReadingModel
-            .find({ deviceId })
+            .find(filter)
             .sort({ receivedAt: -1 })
             .limit(limit)
             .exec();
